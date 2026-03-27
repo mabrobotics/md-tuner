@@ -4,6 +4,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import pyCandle as pc
 import matplotlib.pyplot as plt
+import datetime as dt
+import csv
 
 from md_tuner_backend import DriveBackend
 
@@ -35,7 +37,6 @@ class PIDTuner(ctk.CTk):
 
         self.backend = DriveBackend(md)
 
-        # DATA
         self.x = []
         self.y = []
         self.target_data = []
@@ -44,7 +45,6 @@ class PIDTuner(ctk.CTk):
         self.y_buf = []
         self.t_buf = []
 
-        # === NEW: STATUS VARIABLES ===
         self.temp_var = ctk.StringVar(value="-- °C")
         self.pos_var = ctk.StringVar(value="-- Nm")
 
@@ -54,12 +54,72 @@ class PIDTuner(ctk.CTk):
         self.on_mode_change("Position")
 
         self.after(30, self.refresh_plot_loop)
+        self.load_pid_to_ui("Position")
+        self.time_offset = 0
+
+    # =========================
+    # EXPORT CHART TO PNG/JPG
+    # =========================
+
+    def export_chart(self):
+        now = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # PNG
+        self.fig.savefig(f"chart_{dt.datetime.now()}.png")
+
+        # CSV
+        try:
+            with open(f"chart_{now}.csv", "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["time", "actual", "target"])
+
+                for i in range(len(self.x)):
+                    writer.writerow([
+                        self.x[i],
+                        self.y[i] if i < len(self.y) else "",
+                        self.target_data[i] if i < len(self.target_data) else ""
+                    ])
+
+            self.log("Exported CSV + PNG")
+
+        except Exception as e:
+            self.error(f"CSV export error: {e}")
+
+    # =========================
+    # LOAD PID INTO UI
+    # =========================
+    def load_pid_to_ui(self, mode):
+        kp, ki, kd = self.backend.read_pid(mode)
+
+        if kp is None:
+            return
+
+        if mode == "Position":
+            self.kp_pos.delete(0, "end")
+            self.kp_pos.insert(0, str(kp))
+
+            self.ki_pos.delete(0, "end")
+            self.ki_pos.insert(0, str(ki))
+
+            self.kd_pos.delete(0, "end")
+            self.kd_pos.insert(0, str(kd))
+        else:
+            self.kp_vel.delete(0, "end")
+            self.kp_vel.insert(0, str(kp))
+
+            self.ki_vel.delete(0, "end")
+            self.ki_vel.insert(0, str(ki))
+
+            self.kd_vel.delete(0, "end")
+            self.kd_vel.insert(0, str(kd))
+
+        
+
 
     # =========================
     # MODE CHANGE
     # =========================
     def on_mode_change(self, choice):
-        # ukryj wszystkie frame'y
         for f in [self.target_frame, self.duration_frame,
                 self.pos_frame, self.vel_frame,
                 self.btn_frame, self.temp_row, self.pos_row]:
@@ -75,6 +135,7 @@ class PIDTuner(ctk.CTk):
                         self.pos_frame, self.btn_frame,
                         self.temp_row, self.pos_row]:
                 frame.pack(fill="x", pady=5)
+        self.load_pid_to_ui(choice)
 
     # =========================
     # SAFE FLOATs
@@ -87,6 +148,10 @@ class PIDTuner(ctk.CTk):
     def start_test(self):
         if self.running:
             return
+        if self.x:
+            self.time_offset = self.x[-1]
+        else:
+            self.time_offset = 0
 
         try:
             duration = self.safe_float(self.duration.get())
@@ -132,7 +197,7 @@ class PIDTuner(ctk.CTk):
             return
 
         try:
-            self.x_buf.append(float(data["time"]))
+            self.x_buf.append(float(data["time"]) + self.time_offset)
             self.y_buf.append(float(data["actual"]))
             self.t_buf.append(float(data["target"]))
         except:
@@ -267,6 +332,7 @@ class PIDTuner(ctk.CTk):
         ctk.CTkButton(self.btn_frame, text="START", hover_color="#4d4d4d", command=self.start_test).pack(fill="x", pady=5)
         ctk.CTkButton(self.btn_frame, text="ABORT", hover_color="#4d4d4d", command=self.abort_test, fg_color="red").pack(fill="x", pady=5)
         ctk.CTkButton(self.btn_frame, text="RESET", hover_color="#4d4d4d", command=self.reset_test, fg_color="grey").pack(fill="x", pady=5)
+        ctk.CTkButton(self.btn_frame, text="SAVE CHART", hover_color="#4d4d4d", command=self.export_chart, fg_color="green").pack(fill="x", pady=5)
 
         # STATUS PANEL (FIXED POSITION)
         self.status_frame = ctk.CTkFrame(self.control_container, fg_color="#1a1a1a")
