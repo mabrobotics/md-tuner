@@ -147,5 +147,25 @@ class DriveBackend:
         except Exception as e:
             if callback:
                 callback({"event": "error", "msg": str(e)})
-
         self.running = False
+
+    # =========================
+    # READ PID FROM DRIVE
+    # =========================
+    def read_pid(self, mode):
+        try:
+            if mode == "Position":
+                kp = self.md.readRegister("kp_pos")
+                ki = self.md.readRegister("ki_pos")
+                kd = self.md.readRegister("kd_pos")
+            else:
+                kp = self.md.readRegister("kp_vel")
+                ki = self.md.readRegister("ki_vel")
+                kd = self.md.readRegister("kd_vel")
+
+            return self._to_float(kp), self._to_float(ki), self._to_float(kd)
+
+        except Exception as e:
+            print("PID read error:", e)
+            return None, None, None
+            
